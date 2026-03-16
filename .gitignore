@@ -18,3 +18,5 @@ SmartTimetable/.stitch/
 # Optional test/cache artifacts
 .pytest_cache/
 .mypy_cache/
+node_modules/
+dist/
