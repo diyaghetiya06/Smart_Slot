@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Timetable Published{% endblock %}
+
+{% block content %}
+<section class="glass-card p-4 mt-3 published-hero">
+    {% if publish_data.published %}
+    <div class="success-icon-wrap"><i class="fa-solid fa-check"></i></div>
+    <h4 class="section-title mt-3">Timetable Published Successfully</h4>
+    <p class="section-subtitle">Generation {{ publish_data.generation_id }} is live and ready to use.</p>
+
+    <div class="summary-chips mt-3">
+        <span class="chip">{{ publish_data.divisions }} Divisions</span>
+        <span class="chip">{{ publish_data.faculty }} Faculty</span>
+        <span class="chip">{{ publish_data.slots }} Slots</span>
+    </div>
+
+    <div class="row g-2 mt-3 justify-content-center">
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="btn btn-soft w-100" href="{{ url_for('view_timetable', generation_id=publish_data.generation_id) }}">
+                <i class="fa-solid fa-table me-2"></i>Open Timetable
+            </a>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="btn btn-outline-light w-100" href="{{ url_for('share_generation', generation_id=publish_data.generation_id) }}">
+                <i class="fa-solid fa-share-nodes me-2"></i>Share Link
+            </a>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+            <a class="btn btn-outline-light w-100" href="{{ url_for('generate_page') }}">
+                <i class="fa-solid fa-wand-magic-sparkles me-2"></i>Generate Another
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="fa-solid fa-circle-info"></i>
+        <h5>No Published Timetable Yet</h5>
+        <p class="text-muted-custom">Generate and validate a timetable first, then publish status will appear here.</p>
+        <a class="btn btn-soft" href="{{ url_for('generate_page') }}">Open Generator</a>
+    </div>
+    {% endif %}
+</section>
+
+<section class="glass-card p-4 mt-4">
+    <h5 class="section-title mb-3">Publishing Timeline</h5>
+    <div class="timeline">
+        {% for item in publish_data.timeline %}
+        <div class="timeline-item {% if item == 'Published' and publish_data.published %}timeline-success{% endif %}">
+            {{ item }}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

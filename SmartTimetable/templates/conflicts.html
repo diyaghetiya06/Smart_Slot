@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block page_title %}AI Conflict Resolution Hub{% endblock %}
+
+{% block content %}
+<section class="glass-card p-4 mt-1 conflict-hero">
+    <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+        <div>
+            <p class="hero-kicker mb-1">AI Debugger</p>
+            <h4 class="section-title mb-1">Conflict Resolution</h4>
+            <p class="section-subtitle mb-0">{{ conflict_data.message }}</p>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            {% if conflict_data.generation_id %}
+            <span class="generation-chip">{{ conflict_data.generation_id }}</span>
+            {% endif %}
+            <span class="chip {% if conflict_data.has_conflict %}chip-danger{% else %}chip-success{% endif %}">
+                <i class="fa-solid {% if conflict_data.has_conflict %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %} me-1"></i>
+                {% if conflict_data.has_conflict %}Conflict Score: High{% else %}Conflict Score: None{% endif %}
+            </span>
+        </div>
+    </div>
+</section>
+
+<section class="row g-4 mt-1">
+    <div class="col-lg-8">
+        <div class="glass-card p-4 h-100">
+            <h5 class="mb-3">Conflicting Slot Comparison</h5>
+            {% if conflict_data.has_conflict %}
+            <div class="row g-3 align-items-center">
+                <div class="col-md-5">
+                    <div class="conflict-card">
+                        <small class="text-muted-custom">Conflict A</small>
+                        <h6 class="mb-1">{{ conflict_data.left_item.subject_name }}</h6>
+                        <p class="mb-0 text-muted-custom">{{ conflict_data.left_item.faculty_name }}</p>
+                        <small class="text-muted-custom">{{ conflict_data.left_item.day }} | {{ conflict_data.left_item.time_slot }}</small>
+                    </div>
+                </div>
+                <div class="col-md-2 text-center">
+                    <span class="vs-chip">VS</span>
+                </div>
+                <div class="col-md-5">
+                    <div class="conflict-card">
+                        <small class="text-muted-custom">Conflict B</small>
+                        <h6 class="mb-1">{{ conflict_data.right_item.subject_name }}</h6>
+                        <p class="mb-0 text-muted-custom">{{ conflict_data.right_item.faculty_name }}</p>
+                        <small class="text-muted-custom">{{ conflict_data.right_item.day }} | {{ conflict_data.right_item.time_slot }}</small>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="conflict-ok mt-2">
+                <i class="fa-solid fa-circle-check me-2"></i>No conflicts found for the selected generation.
+            </div>
+            {% endif %}
+
+            <div class="timeline mt-4">
+                {% for slot in conflict_data.timeline %}
+                <div class="timeline-item {% if slot.is_conflict %}timeline-conflict{% endif %}">
+                    {{ slot.label }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="glass-card p-4 h-100">
+            <h5 class="mb-3">AI Suggestions</h5>
+            {% if conflict_data.suggestions %}
+                {% for suggestion in conflict_data.suggestions %}
+                <div class="suggestion-card mb-2">
+                    <div class="d-flex justify-content-between">
+                        <strong>{{ suggestion.slot }}</strong>
+                        <span class="type-pill type-class">{{ suggestion.score }}</span>
+                    </div>
+                    <small class="text-muted-custom">Success Probability: {{ suggestion.probability }}</small>
+                </div>
+                {% endfor %}
+                <form method="post" action="{{ url_for('apply_conflict_fix') }}">
+                    <input type="hidden" name="generation_id" value="{{ conflict_data.generation_id or '' }}">
+                    <button class="btn btn-soft w-100 mt-2" type="submit">Apply AI Fix</button>
+                </form>
+            {% else %}
+                <p class="text-muted-custom mb-0">AI suggestions will appear once a conflict is detected.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

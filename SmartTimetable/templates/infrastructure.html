@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Infrastructure Management{% endblock %}
+
+{% block content %}
+<section class="glass-card p-4 mt-1 infrastructure-hero">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <p class="hero-kicker mb-1">Infrastructure Ops</p>
+            <h3 class="hero-title mb-1">Room and Resource Management</h3>
+            <p class="section-subtitle mb-0">Track room capacity, equipment availability, and occupancy in one place.</p>
+        </div>
+        <span class="chip"><i class="fa-solid fa-building me-1"></i>{{ rooms|length }} Active Rooms</span>
+    </div>
+</section>
+
+<section class="glass-card p-4 mt-3">
+    <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center">
+        <div>
+            <h4 class="section-title mb-1">Room and Infrastructure</h4>
+            <p class="section-subtitle mb-0">Monitor room readiness and occupancy.</p>
+        </div>
+        <button class="btn btn-soft" type="button" data-bs-toggle="collapse" data-bs-target="#addRoomPanel" aria-expanded="false" aria-controls="addRoomPanel">
+            <i class="fa-solid fa-plus me-1"></i>Add New Room
+        </button>
+    </div>
+
+    <div class="collapse mt-3" id="addRoomPanel">
+        <form method="post" action="{{ url_for('add_infrastructure_room') }}" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Room Name</label>
+                <input type="text" name="name" class="form-control custom-input" placeholder="Room 502" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Capacity</label>
+                <input type="number" name="capacity" class="form-control custom-input" min="1" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Type</label>
+                <select name="room_type" class="form-select custom-input">
+                    <option value="Lecture Hall">Lecture Hall</option>
+                    <option value="Lab">Lab</option>
+                    <option value="Seminar">Seminar</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select custom-input">
+                    <option value="Available">Available</option>
+                    <option value="In-Use">In-Use</option>
+                </select>
+            </div>
+            <div class="col-md-12">
+                <label class="form-label">Equipment (comma separated)</label>
+                <input type="text" name="equipment" class="form-control custom-input" placeholder="Projector, AC, Smart Board">
+            </div>
+            <div class="col-12 d-flex justify-content-end">
+                <button type="submit" class="btn btn-soft">Save Room</button>
+            </div>
+        </form>
+    </div>
+
+    <form method="get" action="{{ url_for('infrastructure_page') }}" class="row g-3 mt-3">
+        <div class="col-lg-9">
+            <div class="d-flex flex-wrap gap-2">
+                {% for item in equipment_filters %}
+                <label class="division-check px-3 py-2">
+                    <input class="form-check-input" type="checkbox" name="equipment" value="{{ item }}" {% if item in selected_filters %}checked{% endif %}>
+                    <span>{{ item }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="col-lg-3 d-flex gap-2 justify-content-lg-end align-items-start align-items-lg-center">
+            <button class="btn btn-soft" type="submit">Apply Filters</button>
+            <a class="btn btn-outline-light" href="{{ url_for('infrastructure_page') }}">Reset</a>
+        </div>
+    </form>
+</section>
+
+<section class="row g-4 mt-1">
+    {% for room in rooms %}
+    <div class="col-md-6 col-xl-4">
+        <article class="glass-card p-4 h-100 room-card">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h5 class="mb-1">{{ room.name }}</h5>
+                    <p class="text-muted-custom mb-1">Capacity: {{ room.capacity }} seats</p>
+                    <small class="text-muted-custom">Type-aware scheduling enabled</small>
+                </div>
+                <span class="type-pill type-{{ room.room_type|lower|replace(' ', '-') }}">{{ room.room_type }}</span>
+            </div>
+            <p class="mb-2">
+                <span class="status-badge {% if room.status == 'Available' %}status-available{% else %}status-busy{% endif %}">
+                    <i class="fa-solid fa-circle me-1"></i>{{ room.status }}
+                </span>
+            </p>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                {% for equip in room.equipment or [] %}
+                <span class="chip">{{ equip }}</span>
+                {% endfor %}
+            </div>
+        </article>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <div class="glass-card p-4 text-center text-muted-custom">No rooms match the selected filters.</div>
+    </div>
+    {% endfor %}
+</section>
+{% endblock %}

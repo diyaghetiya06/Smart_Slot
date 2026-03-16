@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block page_title %}Division Management{% endblock %}
+
+{% block content %}
+<section class="glass-card p-4 mt-1 module-hero">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <p class="hero-kicker mb-1">Academic Cohorts</p>
+            <h3 class="hero-title mb-1">Division and Program Structure</h3>
+            <p class="section-subtitle mb-0">Configure semester-wise divisions and map them to UG/PG program streams.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="chip"><i class="fa-solid fa-people-group me-1"></i>{{ divisions|length }} Divisions</span>
+            <span class="chip"><i class="fa-solid fa-graduation-cap me-1"></i>UG + PG Ready</span>
+        </div>
+    </div>
+</section>
+
+<section class="glass-card p-4 mt-3">
+    <h4 class="section-title">Add Division</h4>
+    <form method="post" action="{{ url_for('add_division_route') }}" class="row g-3 mt-1">
+        <div class="col-md-4">
+            <label class="form-label">Division Name</label>
+            <input type="text" name="name" class="form-control custom-input" placeholder="A / B / C" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Semester</label>
+            <select name="semester" class="form-select custom-input" required>
+                {% for sem in range(1, 9) %}
+                <option value="{{ sem }}">Semester {{ sem }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Program</label>
+            <select name="program" class="form-select custom-input" required>
+                <option value="UG">UG</option>
+                <option value="PG">PG</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-soft w-100" type="submit">Add</button>
+        </div>
+    </form>
+</section>
+
+<section class="glass-card p-4 mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h4 class="section-title mb-0">Division List</h4>
+        <span class="chip">Active Records: {{ divisions|length }}</span>
+    </div>
+    <div class="table-responsive mt-3">
+        <table class="table custom-table align-middle">
+            <thead>
+                <tr>
+                    <th>Division</th>
+                    <th>Semester</th>
+                    <th>Program</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in divisions %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.semester }}</td>
+                    <td>{{ item.program }}</td>
+                    <td class="action-cell">
+                        <button class="btn btn-sm btn-outline-info me-2"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editDivisionModal{{ item.id }}">
+                            Edit
+                        </button>
+                        <form method="post" action="{{ url_for('delete_division_route', division_id=item.id) }}" class="d-inline">
+                            <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Delete this division?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+
+                <div class="modal fade" id="editDivisionModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content glass-card modal-custom">
+                            <div class="modal-header border-0">
+                                <h5 class="modal-title">Edit Division</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                            </div>
+                            <form method="post" action="{{ url_for('update_division_route', division_id=item.id) }}">
+                                <div class="modal-body row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label">Division Name</label>
+                                        <input type="text" name="name" class="form-control custom-input" value="{{ item.name }}" required>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Semester</label>
+                                        <select name="semester" class="form-select custom-input" required>
+                                            {% for sem in range(1, 9) %}
+                                            <option value="{{ sem }}" {% if sem == item.semester %}selected{% endif %}>Semester {{ sem }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label">Program</label>
+                                        <select name="program" class="form-select custom-input" required>
+                                            <option value="UG" {% if item.program == 'UG' %}selected{% endif %}>UG</option>
+                                            <option value="PG" {% if item.program == 'PG' %}selected{% endif %}>PG</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="modal-footer border-0">
+                                    <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-soft">Save Changes</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted-custom">No divisions added yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
