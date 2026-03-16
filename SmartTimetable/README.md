@@ -1,6 +1,6 @@
 # Smart Automated Timetable Generator
 
-A production-ready Flask web application for managing academic resources and generating conflict-aware class timetables. The system uses PostgreSQL (Neon) and provides a modern UI for administrators to manage faculty, subjects, divisions, scheduling configuration, and publishing workflows.
+A production-ready timetable platform with a Flask API backend and React frontend for managing academic resources and generating conflict-aware class timetables. The system uses PostgreSQL (Neon) and provides complete admin workflows for faculty, subjects, divisions, scheduling configuration, reporting, and publishing.
 
 ## Highlights
 
@@ -8,6 +8,7 @@ A production-ready Flask web application for managing academic resources and gen
 - End-to-end management modules for faculty, subjects, divisions, and infrastructure
 - Smart timetable generation with practical scheduling constraints
 - Conflict visibility and resolution support
+- React SPA dashboard and modules served by Flask
 - Theme-aware responsive interface for desktop and mobile
 - PostgreSQL-backed persistence (Neon compatible)
 
@@ -25,9 +26,10 @@ The generator enforces core institutional rules while allocating lectures:
 
 - Python 3.10+
 - Flask
+- React + Vite + Tailwind CSS
 - PostgreSQL (Neon)
 - psycopg (binary distribution)
-- Jinja2 templates + custom CSS/JS
+- Jinja templates retained for legacy fallback during cutover
 
 ## Project Structure
 
@@ -71,7 +73,12 @@ SmartTimetable/
 git clone <your-repository-url>
 cd SmartTimetable
 ```
+├── .env
 
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   └── src/
 ### 2. Create Virtual Environment
 
 ```bash
@@ -81,6 +88,7 @@ python -m venv .venv
 Windows PowerShell:
 
 ```bash
+│   └── react/
 .venv\Scripts\Activate.ps1
 ```
 
@@ -96,21 +104,48 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Install frontend dependencies:
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
 ### 4. Configure Environment
 
 Create a `.env` file in the project root:
 
 ```env
 DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
+REACT_APP_PRIMARY=true
 ```
 
-### 5. Run the Application
+`REACT_APP_PRIMARY` is optional and defaults to `true`. Set it to `false` to make legacy Jinja pages the default root again.
+
+### 5. Build Frontend Assets
+
+```bash
+cd frontend
+npm run build
+cd ..
+```
+
+This generates production assets under `static/react` that Flask serves at `/app`.
+
+### 6. Run the Application
 
 ```bash
 python app.py
 ```
 
 Open: http://127.0.0.1:5000
+
+Primary UI path:
+
+- `GET /` redirects to React app by default
+- `GET /app` serves React SPA
+- `GET /legacy` opens legacy dashboard
 
 ## Core Workflows
 
@@ -128,18 +163,34 @@ Use comma-separated time windows in 12-hour AM/PM format:
 9:00 AM-12:00 PM, 2:00 PM-5:00 PM
 ```
 
-## Selected Routes
+## Selected API Routes
 
-- `GET /`
-- `GET /faculty`
-- `POST /add_faculty`
-- `GET /subjects`
-- `POST /add_subject`
-- `GET /divisions`
-- `POST /add_division`
-- `GET /generate`
-- `POST /generate_timetable`
-- `GET /view_timetable`
+- `GET /api/dashboard`
+- `GET|POST|PUT|DELETE /api/faculty`
+- `GET|POST|PUT|DELETE /api/subjects`
+- `GET|POST|PUT|DELETE /api/divisions`
+- `GET|PUT /api/settings`
+- `GET|PUT /api/profile`
+- `GET|POST /api/infrastructure`
+- `GET /api/reports`
+- `GET /api/conflicts`
+- `POST /api/conflicts/apply-fix`
+- `GET /api/published`
+- `GET /api/timetable`
+- `GET /api/generate/options`
+- `POST /api/generate`
+- `GET /api/search`
+- `GET /api/share/<generation_id>`
+
+All API responses follow:
+
+```json
+{
+	"success": true,
+	"message": "",
+	"data": {}
+}
+```
 
 ## Deployment Notes
 

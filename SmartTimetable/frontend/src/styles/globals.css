@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 222 47% 10%;
+  --foreground: 210 40% 96%;
+  --card: 221 42% 16%;
+  --card-foreground: 210 40% 96%;
+  --popover: 221 42% 16%;
+  --popover-foreground: 210 40% 96%;
+  --primary: 266 72% 51%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 221 28% 22%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 220 26% 24%;
+  --muted-foreground: 215 20% 72%;
+  --accent: 187 91% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 222 29% 28%;
+  --input: 222 29% 28%;
+  --ring: 187 91% 42%;
+  --radius: 0.8rem;
+}
+
+.light {
+  --background: 210 44% 98%;
+  --foreground: 222 47% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 14%;
+  --primary: 166 100% 28%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 35% 95%;
+  --secondary-foreground: 222 47% 14%;
+  --muted: 210 35% 94%;
+  --muted-foreground: 215 18% 40%;
+  --accent: 38 100% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 89%;
+  --input: 214 32% 89%;
+  --ring: 166 100% 28%;
+}
+
+* {
+  @apply border-border;
+}
+
+html,
+body,
+#root {
+  @apply h-full;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: "Sora", system-ui, sans-serif;
+}
+
+.page-shell {
+  background: radial-gradient(circle at 20% 20%, rgba(109, 40, 217, 0.22), transparent 32%),
+    radial-gradient(circle at 82% 8%, rgba(6, 182, 212, 0.2), transparent 28%),
+    linear-gradient(125deg, hsl(var(--background)) 0%, hsl(var(--secondary)) 100%);
+}
