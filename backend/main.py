@@ -7,9 +7,13 @@ import os
 from pathlib import Path
 
 from flask import Flask, jsonify, redirect, request, send_from_directory, url_for
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv(*_args, **_kwargs):
+        return False
 
-from backend.models.database import (
+from app.models.database import (
     add_division,
     add_faculty,
     add_room,
@@ -39,14 +43,14 @@ from backend.models.database import (
     update_settings,
     update_subject,
 )
-from backend.scheduler.timetable_algorithm import (
+from app.services.timetable_algorithm import (
     DEFAULT_DAYS,
     DEFAULT_TIME_SLOTS,
     generate_timetable,
     normalize_availability_text,
 )
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parent
 REACT_DIST_DIR = BASE_DIR / "static" / "react"
 load_dotenv(BASE_DIR / ".env")
 
@@ -835,6 +839,12 @@ def react_app_entry(path: str):
         return send_from_directory(REACT_DIST_DIR, path)
 
     return send_from_directory(REACT_DIST_DIR, "index.html")
+
+
+@app.route("/assets/<path:path>")
+def react_asset(path: str):
+    assets_dir = REACT_DIST_DIR / "assets"
+    return send_from_directory(assets_dir, path)
 
 
 @app.route("/")
