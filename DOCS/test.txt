@@ -1,0 +1,1089 @@
+You are a senior full-stack developer with 10 years of experience in Flask, React, PostgreSQL, and SaaS product development. You have been handed the Smart Slot project and your job is to read every single file, find every single error, and fix every single one completely. You do not stop until the project runs perfectly with zero errors.
+
+=== YOUR MINDSET ===
+
+You are not a QA tester writing reports. You are a developer who fixes things. When you find a bug you fix it immediately and completely. You never say "this should be fixed" — you fix it right now and show the complete corrected file. You never leave a TODO. You never write a placeholder. You never show a partial diff. Every file you touch you show in full.
+
+=== ABSOLUTE RULES ===
+
+1. Read every file completely before touching anything. Understand the full picture first.
+2. Fix errors in dependency order — fix database first, then backend, then frontend. Never fix a frontend issue caused by a backend bug by working around it on the frontend.
+3. Show the complete file for every file you modify. No "rest of file stays the same". No "..." shortcuts.
+4. After fixing each file state clearly: what was broken, why it was broken, what you changed to fix it.
+5. Never introduce a new dependency unless it is absolutely necessary. If you add one explain exactly why.
+6. Never change working functionality while fixing broken functionality.
+7. Every fix must be tested mentally end to end — trace the data from database → backend function → API route → frontend API call → component render and verify every step is correct.
+8. Do not stop between phases. Complete everything.
+
+=== PROJECT OVERVIEW ===
+
+Smart Slot is a college timetable scheduling SaaS product.
+
+Backend stack:
+  Python 3.11
+  Flask 3.1
+  psycopg 3.3 with dict_row factory
+  PostgreSQL on Neon
+  Entry point: backend/main.py
+  Database functions: backend/app/models/database.py
+  Scheduling algorithm: backend/app/services/timetable_algorithm.py
+  Config: backend/app/config/settings.py
+
+Frontend stack:
+  React 19
+  Vite 8
+  Tailwind CSS 3
+  shadcn/ui with Radix UI primitives
+  lucide-react for icons
+  react-router-dom 7
+  API client: frontend/src/api/client.js
+  Pages: frontend/src/pages/
+  Components: frontend/src/components/
+  Hooks: frontend/src/hooks/
+  Utils: frontend/src/lib/utils.js
+
+=== PHASE 1 — READ EVERYTHING FIRST ===
+
+Before writing a single line of code, read and analyze every file in this exact order:
+
+Step 1: Read backend/app/models/database.py completely.
+  While reading, note:
+  - Every table that is created in init_db()
+  - Every column in every table
+  - Every function and what SQL it runs
+  - Any function that references a column that does not exist in init_db()
+  - Any function that returns None but the caller expects a list
+  - Any missing RETURNING clause where the caller expects the new row back
+  - Any query that selects columns that do not exist
+  - Any connection that is opened but may not be closed properly
+  - Any place where dict_row is not being used but the code treats the result as a dict
+
+Step 2: Read backend/main.py completely.
+  While reading, note:
+  - Every route and its method
+  - Every route that calls a database function that does not exist
+  - Every route that calls a database function with wrong argument count or wrong argument names
+  - Every route that accesses a key on a response that the database function does not return
+  - Every route that is missing error handling for database exceptions
+  - Every route that returns a response shape inconsistent with { success, message, data }
+  - Every place where _serialize_rows is called but the input is not a list
+  - Every place where get_settings() result is used as a dict but may be an empty dict with wrong keys
+  - The /api/conflicts/apply-fix route — verify if it actually does anything or is a stub
+  - Every import at the top — check if every imported function actually exists in database.py
+
+Step 3: Read backend/app/services/timetable_algorithm.py completely.
+  While reading, note:
+  - The generate_timetable function signature and return shape
+  - Every parameter it expects and what type
+  - The return value shape: { success, reason, records }
+  - Each record in records: what keys does it have?
+  - Whether the algorithm can return success=True with an empty records list
+  - The no-back-to-back constraint: does slot-1 and slot+1 arithmetic work correctly when teaching_slots are not contiguous integers?
+  - Whether sys.setrecursionlimit is called before the recursive backtrack function
+  - Whether the lunch break slots are correctly excluded
+
+Step 4: Read frontend/src/api/client.js completely.
+  Note:
+  - How errors are handled — does it throw on non-ok responses?
+  - Does it handle network failures (fetch throwing) separately from HTTP errors?
+  - Does it correctly parse JSON from error responses?
+  - Is the toast event firing correctly?
+
+Step 5: Read every file in frontend/src/api/ completely.
+  For each file note:
+  - What endpoints it calls
+  - What request body it sends
+  - Whether the body matches what the backend route expects
+  - Whether it reads response.data or the raw response
+  - Whether it handles the case where response.data is undefined
+
+Step 6: Read every file in frontend/src/pages/ completely.
+  For each page note:
+  - What API calls it makes on mount
+  - Whether it handles loading state
+  - Whether it handles error state
+  - Whether it handles empty state
+  - Whether it shows any hardcoded data
+  - Whether any value shown to the user is a raw ID, raw boolean, raw timestamp, raw snake_case key, or null
+  - Whether form submissions send the correct data types (numbers as numbers not strings)
+  - Whether any useEffect has missing or wrong dependencies
+  - Whether any component causes an unhandled promise rejection
+
+Step 7: Read frontend/src/components/layout/AppLayout.jsx.
+  Note:
+  - Whether the nav active state works correctly for the root path "/"
+  - Whether the sidebar closes on mobile after navigation
+  - Whether the theme toggle is connected to useTheme correctly
+
+Step 8: Read frontend/src/hooks/useToast.jsx and useTheme.js.
+  Note:
+  - Whether useToast listens for the app-toast CustomEvent fired by client.js
+  - Whether useTheme correctly persists to localStorage and applies the class to document.documentElement
+  - Whether there is a ToastProvider rendered in the app that the useToast hook requires
+
+Step 9: Read frontend/src/App.jsx.
+  Note:
+  - Whether ErrorBoundary is used
+  - Whether Suspense fallback is reasonable
+  - Whether all routes are defined
+  - Whether lazy imports will fail at runtime if the page file has a syntax error
+
+Step 10: Read frontend/package.json.
+  Note:
+  - Every dependency and whether it is actually imported anywhere
+  - Whether the proxy for /api is configured in vite.config.js so frontend calls reach the backend
+
+=== PHASE 2 — FIX THE DATABASE LAYER ===
+
+After reading everything, fix backend/app/models/database.py completely.
+
+Fix every issue found in Phase 1 Step 1. Additionally apply these fixes:
+
+Fix 1 — get_connection() must always use dict_row:
+Every call to psycopg.connect() must include row_factory=dict_row.
+If get_connection() is a context manager verify it yields and closes correctly.
+Pattern that must be used everywhere:
+  with get_connection() as conn:
+      rows = conn.execute("SELECT ...", (...)).fetchall()
+Never open a connection without closing it.
+
+Fix 2 — Every function that returns a list must return a list, never None:
+  get_faculty() must return [] if no rows, never None
+  get_subjects() must return [] if no rows, never None
+  get_divisions() must return [] if no rows, never None
+  get_rooms() must return [] if no rows, never None
+
+Fix 3 — Every function that returns a single row must return dict | None:
+  get_faculty_by_id() returns dict or None
+  get_settings() is special — it must always return a dict because the singleton row always exists after init_db()
+  get_profile() same — always returns a dict
+
+Fix 4 — get_subjects() JOIN must always return faculty_name:
+SELECT s.id, s.name, s.subject_type, s.assigned_faculty_id, s.created_at, f.name AS faculty_name
+FROM subjects s
+JOIN faculty f ON f.id = s.assigned_faculty_id
+ORDER BY s.id DESC
+If any subject has an assigned_faculty_id that does not match any faculty row this query will silently drop that subject. Use LEFT JOIN and handle the null faculty_name gracefully.
+
+Fix 5 — search_entities must use ILIKE correctly:
+The like_term must be built as f"%{term}%" only once and passed as a parameter.
+Never interpolate user input into SQL strings.
+Verify the JOIN in subjects search returns faculty_name.
+
+Fix 6 — save_timetable_records must use a single transaction:
+All records for one generation must be inserted atomically.
+If any insert fails the entire batch must roll back.
+Use explicit conn.commit() inside a try/except:
+  try:
+      with get_connection() as conn:
+          with conn.cursor() as cur:
+              cur.executemany("INSERT INTO timetable (...) VALUES (...)", [...])
+          conn.commit()
+  except Exception as exc:
+      logger.error("Failed to save timetable records: %s", exc)
+      raise
+
+Fix 7 — get_timetable_for_generation must handle non-existent generation_id:
+If no rows are found return {} not None.
+The caller in main.py must be able to distinguish between "generation exists but empty" and "generation not found" — add a check: if generation_id is provided and result is {} verify the generation_id actually exists with a COUNT query. Return None if truly not found.
+
+Fix 8 — get_latest_generation_id must handle empty timetable table:
+Currently it does conn.execute(...).fetchone()["generation_id"] — if fetchone() returns None this raises TypeError.
+Fix:
+  row = conn.execute(...).fetchone()
+  return row["generation_id"] if row else None
+
+Fix 9 — init_db() singleton inserts must use ON CONFLICT DO NOTHING:
+Verify both settings and user_profile inserts have ON CONFLICT (id) DO NOTHING.
+
+Fix 10 — All datetime values must be serialized before returning from database functions:
+Add _serialize_row(row: dict) -> dict inside database.py:
+  from datetime import datetime, date
+  from decimal import Decimal
+
+  def _serialize_row(row: dict) -> dict:
+      if row is None:
+          return {}
+      result = {}
+      for key, value in row.items():
+          if isinstance(value, (datetime, date)):
+              result[key] = value.isoformat()
+          elif isinstance(value, Decimal):
+              result[key] = float(value)
+          else:
+              result[key] = value
+      return result
+
+  def _serialize_rows(rows: list) -> list[dict]:
+      return [_serialize_row(dict(row)) for row in rows]
+
+Apply _serialize_row to every function that returns a single dict.
+Apply _serialize_rows to every function that returns a list.
+This means main.py never needs to call _serialize_rows again — remove it from main.py after this.
+
+=== PHASE 3 — FIX THE BACKEND ROUTES ===
+
+Fix backend/main.py completely.
+
+Fix 1 — Add proper logging:
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+Remove every print() statement. Replace with logger.info() or logger.error().
+
+Fix 2 — Remove _serialize_rows and _serialize_value from main.py:
+These are now handled in database.py. Remove both functions from main.py entirely.
+Update every route that called _serialize_rows() to just use the return value directly.
+
+Fix 3 — Every route must have try/except:
+Pattern for every route:
+  @app.get("/api/example")
+  def api_example():
+      try:
+          data = some_db_function()
+          return _api_success(data)
+      except Exception as exc:
+          logger.error("Error in api_example: %s", exc, exc_info=True)
+          return _api_error("Something went wrong. Please try again.", 500)
+
+Fix 4 — Fix the faculty routes:
+
+GET /api/faculty:
+  Call get_faculty() — it now returns list directly, no _serialize_rows needed
+  Return _api_success(faculty_list)
+
+POST /api/faculty:
+  Validate all fields first before any DB call
+  name: non-empty string
+  subject: non-empty string
+  available_time: pass through normalize_availability_text, catch ValueError for 400
+  max_lectures_per_day: convert to int, catch ValueError, check >= 1
+  Call add_faculty() and return updated list
+
+PUT /api/faculty/<int:faculty_id>:
+  Same validation as POST
+  Call update_faculty() which returns dict | None
+  If None return 404 "Faculty member not found."
+  Return _api_success(updated_list)
+
+DELETE /api/faculty/<int:faculty_id>:
+  Check count_subjects_for_faculty(faculty_id) first
+  If > 0 return 400 "Cannot delete faculty assigned to subjects. Reassign subjects first."
+  Call delete_faculty(faculty_id) which returns bool
+  If False return 404 "Faculty member not found."
+  Return _api_success(updated_list, "Faculty deleted successfully.")
+
+Fix 5 — Fix the subjects routes:
+
+GET /api/subjects:
+  Call get_subjects() — returns list with faculty_name included from JOIN
+  Return _api_success(subjects_list)
+
+POST /api/subjects:
+  Validate name non-empty
+  Validate subject_type in {"Class", "Lab", "Tutorial"} — return 400 if not
+  Convert assigned_faculty_id to int — return 400 if fails
+  Call faculty_exists(faculty_id) — return 400 "Selected faculty not found." if False
+  Call add_subject() — return updated list
+
+DELETE /api/subjects/<int:subject_id>:
+  Call subject_exists(subject_id) first
+  If False return 404 "Subject not found."
+  Call delete_subject(subject_id)
+  Return updated list
+
+Fix 6 — Fix the divisions routes:
+
+DELETE /api/divisions/<int:division_id>:
+  Check division_exists(division_id) — return 404 if False
+  Check division_has_timetable(division_id) — return 400 with message if True
+  Call delete_division(division_id)
+  Return updated list
+
+Fix 7 — Fix the infrastructure routes:
+
+Add DELETE /api/infrastructure/<int:room_id> if it does not exist:
+  @app.delete("/api/infrastructure/<int:room_id>")
+  def api_delete_room(room_id: int):
+      try:
+          deleted = delete_room(room_id)
+          if not deleted:
+              return _api_error("Room not found.", 404)
+          rooms = get_rooms()
+          equipment_filters = get_equipment_filters()
+          return _api_success(
+              {"rooms": rooms, "equipment_filters": equipment_filters, "selected_filters": []},
+              "Room deleted successfully."
+          )
+      except Exception as exc:
+          logger.error("Error deleting room %s: %s", room_id, exc, exc_info=True)
+          return _api_error("Something went wrong. Please try again.", 500)
+
+Add PUT /api/infrastructure/<int:room_id> if it does not exist for editing rooms.
+
+Fix 8 — Fix GET /api/infrastructure:
+Current code builds equipment_filters from rooms list using a set comprehension.
+This fails if any room has equipment=None instead of [].
+Fix: equipment = room.get("equipment") or [] before the set comprehension.
+
+Fix 9 — Fix POST /api/generate:
+Before running the algorithm add these checks in order:
+  faculty = get_faculty()
+  if not faculty:
+      return _api_error("Add at least one faculty member before generating a timetable.", 400)
+  subjects = get_subjects()
+  if not subjects:
+      return _api_error("Add at least one subject before generating a timetable.", 400)
+  if not target_divisions:
+      return _api_error("No divisions match the selected semester type and program. Check your divisions and settings.", 400)
+
+After generate_timetable() returns:
+  if not result["success"]:
+      return _api_error(f"Could not generate timetable: {result['reason']}", 422)
+  if not result["records"]:
+      return _api_error("Generation produced no schedule entries. Check faculty availability and subject assignments.", 422)
+
+Fix 10 — Fix GET /api/timetable:
+  generation_id = request.args.get("generation_id") or get_latest_generation_id()
+  if not generation_id:
+      return _api_success({"generation_id": None, "timetable_data": {}, "days": [], "time_slots": []})
+
+  timetable_data = get_timetable_for_generation(generation_id)
+  if timetable_data is None:
+      return _api_error("Timetable generation not found.", 404)
+
+  _, days, time_slots = _get_schedule_settings()
+  return _api_success({
+      "generation_id": generation_id,
+      "timetable_data": timetable_data,
+      "days": days,
+      "time_slots": time_slots,
+  })
+
+Fix 11 — Fix /api/conflicts/apply-fix — make it actually work:
+Replace the stub with this complete implementation:
+
+@app.post("/api/conflicts/apply-fix")
+def api_apply_conflict_fix():
+    try:
+        payload = request.get_json(silent=True) or {}
+        generation_id = str(payload.get("generation_id", "")).strip() or get_latest_generation_id()
+        if not generation_id:
+            return _api_error("No generation found to apply fix.", 404)
+
+        _, days, time_slots = _get_schedule_settings()
+        teaching_slots = [i for i, s in enumerate(time_slots) if _is_teaching_slot(s)]
+        conflict_data = _get_conflict_context(generation_id, days, time_slots)
+
+        if not conflict_data["has_conflict"]:
+            return _api_success({**conflict_data, "fix_applied": False}, "No conflicts to fix.")
+
+        left = conflict_data["left_item"]
+        right = conflict_data["right_item"]
+        if not right:
+            return _api_success({**conflict_data, "fix_applied": False}, "Could not identify conflicting rows.")
+
+        with get_connection() as conn:
+            all_rows = conn.execute(
+                "SELECT id, day, slot_index, time_slot, faculty_id, division_id FROM timetable WHERE generation_id = %s",
+                (generation_id,)
+            ).fetchall()
+
+        faculty_busy = {(r["faculty_id"], r["day"], r["slot_index"]) for r in all_rows}
+        division_busy = {(r["division_id"], r["day"], r["slot_index"]) for r in all_rows}
+
+        faculty_id = right["faculty_id"]
+        division_id = right["division_id"]
+        right_id = right["id"] if "id" in right else None
+
+        if right_id is None:
+            with get_connection() as conn:
+                row = conn.execute(
+                    "SELECT id FROM timetable WHERE generation_id = %s AND faculty_id = %s AND day = %s AND time_slot = %s LIMIT 1",
+                    (generation_id, faculty_id, right["day"], right["time_slot"])
+                ).fetchone()
+            right_id = row["id"] if row else None
+
+        if right_id is None:
+            return _api_success({**conflict_data, "fix_applied": False}, "Could not locate conflicting row to fix.")
+
+        faculty_row = next((f for f in get_faculty() if f["id"] == faculty_id), None)
+        if not faculty_row:
+            return _api_success({**conflict_data, "fix_applied": False}, "Faculty data missing.")
+
+        from app.services.timetable_algorithm import _parse_availability, _faculty_is_available_for_slot
+        availability = _parse_availability(faculty_row["available_time"])
+        max_per_day = int(faculty_row["max_lectures_per_day"])
+        faculty_day_count = {}
+        for r in all_rows:
+            if r["faculty_id"] == faculty_id:
+                key = r["day"]
+                faculty_day_count[key] = faculty_day_count.get(key, 0) + 1
+
+        new_day = None
+        new_slot = None
+        for day in days:
+            day_count = faculty_day_count.get(day, 0)
+            if day_count >= max_per_day:
+                continue
+            for slot in teaching_slots:
+                if (faculty_id, day, slot) in faculty_busy:
+                    continue
+                if (division_id, day, slot) in division_busy:
+                    continue
+                if not _faculty_is_available_for_slot(availability, slot, time_slots):
+                    continue
+                new_day = day
+                new_slot = slot
+                break
+            if new_day:
+                break
+
+        if not new_day:
+            return _api_success({**conflict_data, "fix_applied": False}, "No available slot found for automatic fix. Manual adjustment required.")
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE timetable SET day = %s, slot_index = %s, time_slot = %s WHERE id = %s",
+                (new_day, new_slot, time_slots[new_slot], right_id)
+            )
+            conn.commit()
+
+        updated_conflict = _get_conflict_context(generation_id, days, time_slots)
+        return _api_success(
+            {**updated_conflict, "fix_applied": True},
+            f"Conflict fixed. Moved to {new_day} {time_slots[new_slot]}."
+        )
+    except Exception as exc:
+        logger.error("Error in apply_conflict_fix: %s", exc, exc_info=True)
+        return _api_error("Something went wrong while applying the fix.", 500)
+
+Fix 12 — Fix get_settings() usage:
+get_settings() returns a dict. Every place in main.py that does get_settings() or {} is now just get_settings().
+_get_schedule_settings() returns (settings_data, days, time_slots).
+Verify days and time_slots are always lists, never None. If settings has no working_days fall back to DEFAULT_DAYS.
+
+Fix 13 — Add missing /api/health endpoint:
+@app.get("/api/health")
+def api_health():
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1")
+        return jsonify({"status": "ok", "database": "connected", "version": "1.0.0"}), 200
+    except Exception as exc:
+        logger.error("Health check failed: %s", exc)
+        return jsonify({"status": "error", "database": "disconnected"}), 503
+
+Fix 14 — Fix SECRET_KEY:
+Change:
+  app.config["SECRET_KEY"] = "smart-timetable-secret-key"
+To:
+  app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-insecure-key-change-in-production")
+
+Fix 15 — Validate environment on startup:
+Add before app = Flask(__name__):
+  if not os.environ.get("DATABASE_URL"):
+      raise SystemExit("ERROR: DATABASE_URL environment variable is not set. Check your .env file.")
+
+=== PHASE 4 — FIX THE ALGORITHM ===
+
+Fix backend/app/services/timetable_algorithm.py completely.
+
+Fix 1 — Recursion limit:
+At the start of generate_timetable() add:
+  import sys
+  sys.setrecursionlimit(max(10000, len(assignments) * 20))
+
+Fix 2 — Contiguous slot adjacency for no-back-to-back constraint:
+The current code checks (faculty_id, day, slot - 1) and (faculty_id, day, slot + 1) in faculty_busy.
+If teaching_slots is [0, 1, 2, 3, 5, 6, 7] (slot 4 is lunch and skipped) then slot 3 and slot 5 are adjacent teaching slots but 3+1=4 is not in faculty_busy so the check misses real adjacency.
+
+Fix by precomputing adjacency:
+  prev_slot = {}
+  next_slot = {}
+  for i, s in enumerate(teaching_slots):
+      if i > 0:
+          prev_slot[s] = teaching_slots[i - 1]
+      if i < len(teaching_slots) - 1:
+          next_slot[s] = teaching_slots[i + 1]
+
+In can_place() replace:
+  if (faculty_id, day, slot - 1) in faculty_busy or (faculty_id, day, slot + 1) in faculty_busy:
+With:
+  prev_s = prev_slot.get(slot)
+  next_s = next_slot.get(slot)
+  if (prev_s is not None and (faculty_id, day, prev_s) in faculty_busy) or \
+     (next_s is not None and (faculty_id, day, next_s) in faculty_busy):
+
+Fix 3 — Pre-compute faculty availability per slot:
+Build a cache once before backtracking:
+  faculty_available_slots: dict[int, list[tuple[str, int]]] = {}
+  for f_id in faculty_map:
+      windows = availability_cache[f_id]
+      slots = []
+      for day in active_days:
+          for slot in teaching_slots:
+              if _faculty_is_available_for_slot(windows, slot, active_time_slots):
+                  slots.append((day, slot))
+      faculty_available_slots[f_id] = slots
+
+In can_place() when checking availability just check the faculty_available_slots cache:
+  if (day, slot) not in set(faculty_available_slots[faculty_id]):
+
+Actually convert to a set for O(1) lookup:
+  faculty_available_slot_set: dict[int, set[tuple[str, int]]] = {
+      f_id: set(slots) for f_id, slots in faculty_available_slots.items()
+  }
+
+In can_place():
+  if (day, slot) not in faculty_available_slot_set[faculty_id]:
+      return False
+
+Fix 4 — Verify backtrack returns meaningful error when it cannot place all assignments:
+If backtrack(0) returns False the current code returns:
+  {"success": False, "reason": "Could not satisfy all constraints...", "records": []}
+This is correct. Verify the reason string is human-readable.
+
+Fix 5 — Verify records include all required keys:
+Each record returned must have exactly these keys and no extras:
+  division_id, semester, program, day, slot_index, time_slot,
+  subject_id, faculty_id, subject_name, faculty_name, subject_type
+
+Verify "scheduler_version" key is NOT in records since the timetable table INSERT does not have a scheduler_version column. Remove it from the records dict if present.
+
+=== PHASE 5 — FIX THE API CLIENT ===
+
+Rewrite frontend/src/api/client.js completely:
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+
+function fireToast(title, description, variant = "default") {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("app-toast", { detail: { title, description, variant } })
+  );
+}
+
+export async function apiRequest(path, options = {}) {
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {}),
+      },
+      ...options,
+    });
+  } catch (networkErr) {
+    const msg = "Cannot connect to server. Check your internet connection.";
+    fireToast("Connection Error", msg, "destructive");
+    throw new Error(msg);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  let payload = null;
+  if (contentType.includes("application/json")) {
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!response.ok) {
+    const msg =
+      payload?.message ??
+      (response.status === 404
+        ? "The requested resource was not found."
+        : response.status === 400
+        ? "Invalid request. Please check your input."
+        : response.status >= 500
+        ? "A server error occurred. Please try again."
+        : `Request failed (${response.status}).`);
+    fireToast("Error", msg, "destructive");
+    const err = new Error(msg);
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
+  }
+
+  if (
+    payload?.message &&
+    options.method &&
+    options.method.toUpperCase() !== "GET"
+  ) {
+    fireToast("Success", payload.message, "default");
+  }
+
+  return payload;
+}
+
+export async function apiUpload(path, formData) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      body: formData,
+    });
+  } catch {
+    const msg = "Cannot connect to server.";
+    fireToast("Connection Error", msg, "destructive");
+    throw new Error(msg);
+  }
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const msg = payload?.message ?? "Upload failed.";
+    fireToast("Upload Error", msg, "destructive");
+    throw new Error(msg);
+  }
+
+  return payload;
+}
+
+=== PHASE 6 — FIX EVERY FRONTEND API FILE ===
+
+Read every file in frontend/src/api/ and fix these common errors:
+
+For every api file verify:
+  1. It imports apiRequest from "@/api/client" correctly
+  2. Every function returns the full payload (the whole response object) so the page can access both .data and .message
+  3. GET requests do not pass method: "GET" (default) — they can omit it
+  4. POST requests pass method: "POST" and body: JSON.stringify(payload)
+  5. PUT requests pass method: "PUT" and body: JSON.stringify(payload)
+  6. DELETE requests pass method: "DELETE" and no body
+
+Fix frontend/src/api/faculty.js:
+  fetchFaculty: GET /api/faculty — returns full response
+  createFaculty(data): POST /api/faculty — body must include name, subject, available_time, max_lectures_per_day as number not string
+  updateFaculty(id, data): PUT /api/faculty/${id}
+  deleteFaculty(id): DELETE /api/faculty/${id}
+
+Fix frontend/src/api/subjects.js:
+  fetchSubjects: GET /api/subjects
+  createSubject(data): POST /api/subjects — assigned_faculty_id must be Number(data.assigned_faculty_id)
+  updateSubject(id, data): PUT /api/subjects/${id}
+  deleteSubject(id): DELETE /api/subjects/${id}
+
+Fix frontend/src/api/divisions.js:
+  fetchDivisions: GET /api/divisions
+  createDivision(data): POST /api/divisions — semester must be Number(data.semester)
+  updateDivision(id, data): PUT /api/divisions/${id}
+  deleteDivision(id): DELETE /api/divisions/${id}
+
+Fix frontend/src/api/infrastructure.js:
+  fetchInfrastructure(filters): GET /api/infrastructure with query params
+    Build URL: const params = new URLSearchParams(); filters.forEach(f => params.append("equipment", f)); return apiRequest(`/api/infrastructure?${params}`)
+  createRoom(data): POST /api/infrastructure — capacity must be Number
+  deleteRoom(id): DELETE /api/infrastructure/${id} — add this function if missing
+
+Fix frontend/src/api/generate.js:
+  fetchGenerateOptions: GET /api/generate/options
+  generateTimetable(data): POST /api/generate — division_ids must be array of integers not strings
+
+Fix frontend/src/api/timetable.js:
+  fetchTimetable(generationId): GET /api/timetable${generationId ? ?generation_id=${encodeURIComponent(generationId)} : ""}
+
+Fix frontend/src/api/conflicts.js:
+  fetchConflicts(generationId): GET /api/conflicts${generationId ? ?generation_id=... : ""}
+  applyConflictFix(generationId): POST /api/conflicts/apply-fix — body: { generation_id: generationId }
+
+Fix frontend/src/api/reports.js:
+  fetchReports(generationId): GET /api/reports${generationId ? ?generation_id=... : ""}
+
+Fix frontend/src/api/published.js:
+  fetchPublished(generationId): GET /api/published${generationId ? ?generation_id=... : ""}
+  fetchShare(generationId): GET /api/share/${generationId}
+
+Fix frontend/src/api/search.js:
+  fetchSearch(query): GET /api/search?q=${encodeURIComponent(query)}
+
+Fix frontend/src/api/settings.js:
+  fetchSettings: GET /api/settings
+  updateSettings(data): PUT /api/settings
+
+Fix frontend/src/api/profile.js:
+  fetchProfile: GET /api/profile
+  updateProfile(data): PUT /api/profile
+
+Fix frontend/src/api/dashboard.js:
+  fetchDashboard: GET /api/dashboard
+
+=== PHASE 7 — FIX EVERY FRONTEND PAGE ===
+
+Fix every page completely. For each page listed below fix every issue found in Phase 1 Steps 5 and 6.
+
+Common fixes that apply to EVERY page:
+  1. Replace every plain "No records" text with a proper EmptyState component (icon, title, description, optional action button)
+  2. Add a loading skeleton while data is fetching — never show empty table then suddenly populate
+  3. Add a proper error card when the API call fails — never silently fail
+  4. Every form field label must be human-readable sentence case — "Available Time" not "available_time"
+  5. Every value shown in table cells must be human-readable:
+     - Timestamps: formatted as "16 Mar 2026 at 3:05 PM" using the formatDateTime function
+     - Booleans: "Yes" / "No" or a badge — never "true" / "false"
+     - max_lectures_per_day shown as "3 per day" using formatMaxLectures
+     - available_time shown as "9:00 AM – 12:00 PM" using formatAvailability (replace - with – and , with ·)
+     - semester shown as "Semester 3" using formatSemester
+     - program shown as "Undergraduate" / "Postgraduate" using formatProgram
+     - subject_type shown as a colored badge using SubjectTypeBadge
+     - room status shown as a colored badge
+     - generation_id shown as "Generated on 16 Mar 2026 at 3:05 PM" using formatGenerationId
+  6. Every delete button must trigger window.confirm("Are you sure you want to delete {name}?") before calling the API
+  7. Every form must clear all fields after successful submit
+  8. Every form must return focus to the first field after successful submit
+  9. Status messages must distinguish success (green border) from error (red border)
+  10. Numbers sent to the backend from form inputs must be converted to Number() — never send numeric strings
+
+Fix DashboardPage.jsx:
+  Remove hardcoded subtitle "Modern React + shadcn UI migration is now active."
+  Show 4 stat cards from API data: Total Faculty, Total Subjects, Total Divisions, Generated Timetables
+  Show onboarding checklist: 4 steps each with a check (green) or circle (muted) based on count > 0
+  Show progress bar: "N of 4 steps complete"
+  Show quick action buttons: Add Faculty → /faculty, Generate Timetable → /generate, View Reports → /reports
+  If all stats are 0 show EmptyState with action "Get Started" → /faculty
+  Loading skeleton while fetching
+  Error card if API fails
+
+Fix FacultyPage.jsx:
+  Table columns: Name, Subject, Available Time (formatted), Max Per Day (formatted), Added On (formatDate), Actions
+  Add Edit button per row — clicking it replaces the row with inline editable inputs and Save/Cancel
+  Save inline edit calls PUT /api/faculty/{id}
+  Delete calls DELETE /api/faculty/{id} with confirm dialog
+  EmptyState: icon=Users, title="No faculty added yet", description="Add your first faculty member to start building timetables.", action scrolls to form
+  Form validation: inline error messages under each invalid field, never just an alert
+
+Fix SubjectsPage.jsx:
+  Table columns: Name, Type (SubjectTypeBadge), Assigned Faculty (faculty_name not ID), Added On, Actions
+  Faculty dropdown populated from GET /api/faculty — show loading state while faculty loads
+  If faculty list is empty show a warning: "Add faculty members first before creating subjects."
+  subject_type select options: "Class", "Lab", "Tutorial" with descriptions in the option text
+  EmptyState: icon=BookOpen
+
+Fix DivisionsPage.jsx:
+  Program select shows "Undergraduate" / "Postgraduate" — sends "UG" / "PG" to backend
+  Table shows Semester as "Semester 3" and Program as "Undergraduate"
+  EmptyState: icon=Layers
+
+Fix InfrastructurePage.jsx:
+  Add Delete button to each room row — calls DELETE /api/infrastructure/{id}
+  Add Edit button for room status (inline edit for status field only)
+  Status shown as StatusBadge component: Available=green, Maintenance=amber, Reserved=blue
+  Equipment shown as comma-joined pill badges, not a plain string
+  EmptyState: icon=Building2
+
+Fix GeneratePage.jsx:
+  Division checkboxes show "Semester 3 — CS-B (Undergraduate)" not "Sem 3 - CS-B (UG)"
+  Program select: "Undergraduate" / "Postgraduate"
+  Semester type select: "Odd Semester (1, 3, 5, 7)" / "Even Semester (2, 4, 6, 8)"
+  Empty divisions list shows EmptyState: icon=Filter, title="No matching divisions", description="No divisions match the selected criteria."
+  While generating: button shows spinner + "Generating timetable..." and is disabled
+  On success: navigate to /timetable?generation_id={id} with toast "Timetable generated successfully"
+  On error: show exact error message from API in red banner — never generic "Unable to generate"
+
+Fix TimetablePage.jsx:
+  Show generation ID formatted: "Generated on 16 Mar 2026 at 3:05 PM"
+  Each cell shows:
+    Line 1: subject name in font-medium
+    Line 2: faculty name in text-sm text-muted-foreground
+    SubjectTypeBadge below the names
+  Lunch/break slots show "Lunch Break" label in muted italic — not a dash, not empty
+  Division name in heading formatted: "Semester 1 — CS-A (Undergraduate)"
+  EmptyState: icon=CalendarX, title="No timetable generated yet", action → /generate
+
+Fix ReportsPage.jsx:
+  Generation ID shown formatted
+  Stat cards: "75% of faculty utilized" not "75%", "Busiest day: Monday" not "Monday", "40 slots free" not "40"
+  Faculty utilization shows a progress bar (w-full bg-muted rounded, inner div width={utilization}%)
+  EmptyState: icon=BarChart3, action → /generate
+
+Fix ConflictsPage.jsx:
+  If no conflict: EmptyState with icon=CheckCircle2, title="No conflicts detected", description="Your timetable is clean."
+  If conflict: two cards showing clash with all fields human-readable
+  Apply AI Fix button: shows spinner while applying, reloads conflicts after, shows what was fixed
+  EmptyState for no generation: icon=AlertCircle, title="No timetable loaded", description="Generate a timetable to check for conflicts."
+
+Fix SettingsPage.jsx:
+  All labels human-readable
+  Semester type select: "Odd Semester" / "Even Semester"
+  Default program select: "Undergraduate" / "Postgraduate"
+  Working days helper text: "Enter days separated by commas, e.g. Monday, Tuesday, Wednesday"
+  Time slots helper text: "Enter one time slot per line, e.g. 9:00 AM-10:00 AM"
+  Save button: "Saving..." + spinner while saving
+  Success and error banners with correct colors
+
+Fix ProfilePage.jsx:
+  Load all data from GET /api/profile on mount
+  Save via PUT /api/profile
+  Boolean preferences shown as toggle checkboxes, not text
+  Show loading skeleton while loading
+  Show error if API fails
+  No hardcoded sample data
+
+Fix PublishedPage.jsx:
+  Generation ID formatted
+  Counts shown as "3 divisions", "5 faculty members", "40 scheduled slots"
+  Share URL: clickable link + copy-to-clipboard button that shows "Copied!" for 2 seconds
+  EmptyState: icon=Send, title="Nothing published yet"
+
+Fix SearchPage.jsx:
+  Live search: add useEffect that calls fetchSearch when query changes (debounced 350ms)
+  Show spinner inside search input while loading
+  Faculty results: Name + Subject (not raw available_time or IDs)
+  Subject results: Name + SubjectTypeBadge + faculty name
+  Division results: Name + formatSemester + formatProgram
+  EmptyState: icon=SearchX
+
+Fix SharePage.jsx:
+  Copy to clipboard button
+  Show formatted generation ID when displaying
+  EmptyState: icon=Link2, title="No share link yet"
+
+=== PHASE 8 — FIX THE HOOKS AND LAYOUT ===
+
+Fix frontend/src/hooks/useToast.jsx:
+  Must listen for app-toast CustomEvent fired by client.js:
+  useEffect(() => {
+    function handler(e) { toast(e.detail); }
+    window.addEventListener("app-toast", handler);
+    return () => window.removeEventListener("app-toast", handler);
+  }, [toast]);
+  This useEffect must be inside a component or hook that is always mounted.
+  Create a ToastListener component that mounts this effect and renders nothing:
+  export function ToastListener() { const { toast } = useToast(); useEffect(...); return null; }
+  Render <ToastListener /> inside AppLayout so it is always active.
+
+Fix frontend/src/hooks/useTheme.js:
+  On mount read from localStorage key "smart-slot-theme"
+  Apply theme by toggling class "dark" on document.documentElement
+  On toggle: update localStorage and re-apply class
+  Return { theme, toggleTheme } — theme is "light" or "dark"
+
+Fix frontend/src/components/layout/AppLayout.jsx:
+  Active nav item: use location.pathname === item.to for exact match for root "/"
+  For other routes use location.pathname.startsWith(item.to) only if item.to is not "/"
+  Header title: fetch institute_name from GET /api/settings on mount, show it in the header instead of hardcoded "Smart Timetable"
+  Bell icon: fetch GET /api/conflicts on mount, if has_conflict is true show a red dot (w-2 h-2 rounded-full bg-red-500 absolute top-0 right-0) on the Bell icon
+  Profile link: add a small avatar circle (initials from profile full_name) in header top-right as a Link to /profile
+  Make sure ToastProvider and Toaster are rendered inside AppLayout (or in App.jsx wrapping AppLayout) so toasts display correctly
+
+Fix frontend/src/App.jsx:
+  Wrap Routes in ErrorBoundary
+  Suspense fallback must be a proper skeleton:
+  <div className="space-y-4 p-4">
+    <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
+    <div className="h-32 w-full animate-pulse rounded-md bg-muted" />
+    <div className="h-64 w-full animate-pulse rounded-md bg-muted" />
+  </div>
+  Not a plain "Loading page..." div
+
+=== PHASE 9 — FIX VITE CONFIG AND PROXY ===
+
+Fix frontend/vite.config.js — add the proxy so /api calls reach Flask on port 5000:
+
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { "@": path.resolve(__dirname, "./src") },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path,
+      },
+    },
+  },
+  build: {
+    target: "es2020",
+    sourcemap: false,
+  },
+});
+
+Without this proxy every API call from the frontend fails with CORS error in development.
+
+=== PHASE 10 — FIX REQUIREMENTS AND PACKAGE.JSON ===
+
+Fix backend/requirements.txt:
+  Flask==3.1.3
+  python-dotenv==1.2.2
+  psycopg[binary]==3.3.3
+  psycopg-pool==3.2.3
+  flask-compress==1.15
+  flask-cors==5.0.0
+
+Add any missing package. Remove any package listed that is never imported.
+
+Fix frontend/package.json:
+  Verify every package in dependencies is actually imported somewhere in src/
+  If @radix-ui/react-dialog is listed but modal.jsx is never used anywhere — remove it
+  If @radix-ui/react-select is listed but select.jsx is never used — remove it
+  If @radix-ui/react-tabs is listed but tabs.jsx is never used — remove it
+  Keep only what is actually used
+  Run npm install after changes
+
+=== PHASE 11 — CREATE MISSING UTILITY FUNCTIONS ===
+
+Ensure frontend/src/lib/utils.js exports these functions completely implemented:
+
+export function cn(...classes) — existing clsx + tailwind-merge implementation, keep it
+
+export function formatGenerationId(id) {
+  if (!id || typeof id !== "string") return id ?? "—";
+  const match = id.match(/^GEN-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+  if (!match) return id;
+  const [, year, month, day, hour, minute] = match;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const h = parseInt(hour, 10);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `Generated on ${parseInt(day, 10)} ${months[parseInt(month, 10) - 1]} ${year} at ${h12}:${minute} ${ampm}`;
+}
+
+export function formatDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return "—"; }
+}
+
+export function formatDateTime(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  } catch { return "—"; }
+}
+
+export function formatAvailability(str) {
+  if (!str) return "—";
+  return str.split(",").map(s => s.trim().replace("-", " – ")).join("  ·  ");
+}
+
+export function formatSemester(num) {
+  if (num === null || num === undefined) return "—";
+  return `Semester ${num}`;
+}
+
+export function formatProgram(str) {
+  if (!str) return "—";
+  return str === "UG" ? "Undergraduate" : str === "PG" ? "Postgraduate" : str;
+}
+
+export function formatCapacity(num) {
+  if (num === null || num === undefined) return "—";
+  return `${num} students`;
+}
+
+export function formatMaxLectures(num) {
+  if (num === null || num === undefined) return "—";
+  return `${num} per day`;
+}
+
+export function formatBoolean(val) {
+  if (val === null || val === undefined) return "—";
+  return val ? "Yes" : "No";
+}
+
+export function formatCount(num, singular, plural) {
+  if (num === null || num === undefined) return "—";
+  return `${num} ${num === 1 ? singular : plural}`;
+}
+
+=== PHASE 12 — CREATE MISSING SHARED COMPONENTS ===
+
+Create these components if they do not exist. If they exist fix them completely.
+
+frontend/src/components/ui/EmptyState.jsx — icon, title, description, optional action button. Min height 200px. Centered. Works in light and dark.
+
+frontend/src/components/ui/SubjectTypeBadge.jsx — Class=blue, Lab=purple, Tutorial=amber colored pill badges.
+
+frontend/src/components/ui/StatusBadge.jsx — Available=green, Maintenance=amber, Reserved=blue for rooms. Published=green, Draft=gray, Reviewed=blue for timetables.
+
+frontend/src/components/ui/TableSkeleton.jsx — animated pulse rows and cols skeleton for table loading state.
+
+frontend/src/components/ui/ErrorBoundary.jsx — class component with getDerivedStateFromError, shows AlertTriangle icon + error message + Reload button.
+
+frontend/src/components/ui/PageHeader.jsx — consistent page header with title, description, optional badge. Used at top of every page.
+
+frontend/src/components/ui/SpinnerIcon.jsx — 16px animated SVG spinner for button loading states.
+
+=== PHASE 13 — END TO END VERIFICATION ===
+
+After all fixes are applied, trace these complete flows mentally and verify every step is correct:
+
+Flow 1 — Add faculty and generate timetable:
+  1. User opens /faculty
+  2. GET /api/faculty called → database.get_faculty() → SELECT from faculty → returns list → page shows EmptyState
+  3. User fills form and submits
+  4. POST /api/faculty called with correct body → validation passes → add_faculty() → SELECT updated list → returns list → form clears → table shows new row with formatted values
+  5. User navigates to /generate
+  6. GET /api/generate/options called → returns divisions and settings → page shows division checkboxes
+  7. User selects divisions and clicks Generate
+  8. POST /api/generate called → validation passes → algorithm runs → save_timetable_records() → returns generation_id → navigate to /timetable?generation_id=...
+  9. GET /api/timetable?generation_id=... called → timetable_data returned → table renders with formatted cells
+  Verify every step is connected and correct.
+
+Flow 2 — View and fix conflicts:
+  1. User opens /conflicts
+  2. GET /api/conflicts called → returns conflict data → if has_conflict=false show EmptyState
+  3. If has_conflict=true show two conflict cards with human-readable data
+  4. User clicks Apply AI Fix
+  5. POST /api/conflicts/apply-fix called → real fix logic runs → returns updated conflict data with fix_applied=true
+  6. Page shows "Fixed: Moved to Monday 10:00 AM-11:00 AM" message
+  Verify every step.
+
+Flow 3 — Update settings and regenerate:
+  1. User opens /settings
+  2. GET /api/settings called → form populated with current values
+  3. User changes working_days, clicks Save
+  4. PUT /api/settings called → settings saved → toast shows
+  5. User opens /generate, generates new timetable
+  6. GET /api/timetable for new generation — days array matches the new working_days
+
+=== FINAL DELIVERABLE ===
+
+After completing all 13 phases produce this exact report:
+
+ERRORS FOUND AND FIXED:
+For each error:
+  Error #N
+  Location: file name and function/route name
+  Problem: exactly what was wrong
+  Fix: exactly what you changed
+  Impact: what would have happened without this fix
+
+FILES CHANGED:
+Complete list of every file created or modified.
+
+COMMANDS TO RUN:
+Every command the developer must run after your changes:
+  pip install ...
+  npm install
+  Any database changes needed
+  How to start the backend: cd backend && python main.py
+  How to start the frontend: cd frontend && npm run dev
+
+VERIFICATION STEPS:
+  How to verify the backend is running: GET http://localhost:5000/api/health
+  How to verify the frontend is running: open http://localhost:5173
+  How to verify end to end: the 3 flows from Phase 13
+
+Begin with Phase 1. Read every file completely before writing any code. Do not skip any phase. Do not stop until all 13 phases are complete and the final report is produced.
+testing mode = fast

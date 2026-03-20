@@ -1,176 +1,115 @@
-# Smart Automated Timetable Generator
+# Smart Slot — Automated Timetable Generator SaaS
 
-A full-stack timetable platform with a React frontend and Flask backend, designed for conflict-aware academic scheduling and operational management.
+Smart Slot is a multi-tenant, SaaS-ready academic scheduling platform. It uses a constraint-aware algorithm to automatically assign faculty and rooms to classes, avoiding collisions while honoring faculty availability and maximum workload constraints.
 
-## Architecture
+**Tech Stack**: React + Vite (Frontend), Flask (Backend API), PostgreSQL (Database), Redis + RQ (Background Async Jobs).
 
-- Frontend: React + Vite + Tailwind CSS
-- Backend: Flask API (Python)
-- Database: PostgreSQL (Neon supported)
+---
 
-## Current Project Structure
+## Features
+
+- **Multi-Tenancy**: Secure organization isolation (`org_id` based). Create multiple distinct universities/schools in the same database.
+- **JWT Authentication**: Secure login, registration, and session management using PyJWT and bcrypt.
+- **Smart Scheduling**: 
+  - Conflict-free resolution (no faculty overlap in the same day/time).
+  - Room assignment logic matching lecture types (Lab, Class, Tutorial) to appropriate room types.
+  - Honors faculty availability (e.g., "9:00 AM-12:00 PM") and daily workload limits.
+- **Async Job Queue**: Timetable generation runs in the background via Redis/RQ ensuring the UI stays responsive (with a seamless fallback to synchronous generation if Redis is unavailable).
+- **Publish & Share**: Real-time status tracking (Draft → Reviewed → Published) and secure, token-based public shareable links for timetables.
+- **Bulk Import**: Quickly onboard faculty by uploading CSV or JSON files.
+
+---
+
+## 🚀 Quick Start Guide
+
+### 1. Prerequisites
+- **Python 3.9+**
+- **Node.js 18+**
+- **PostgreSQL Database** (e.g., Neon serverless Postgres)
+- *(Optional but Recommended)* **Redis Server** on port 6379 (for background generation jobs).
+
+### 2. Configure Environment
+
+Create a `.env` file in the `backend/` directory:
+
+```env
+# backend/.env
+
+# Your PostgreSQL Connection String
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
+
+# Security Secrets (Must be random, unguessable strings)
+JWT_SECRET=your-super-secret-jwt-key
+SECRET_KEY=your-flask-session-secret
+
+# Redis Job Queue (Defaults to localhost:6379 if omitted)
+REDIS_URL=redis://localhost:6379
+```
+*(See `backend/.env.example` for a template).*
+
+### 3. Start the Backend
+
+Open a terminal and run:
+
+```bash
+cd backend
+python -m venv .venv
+
+# Windows:
+.venv\Scripts\activate
+# Mac/Linux:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the Flask API
+python main.py
+```
+*The backend will automatically run migrations (`init_db`) on first start.*
+
+*(Optional)* Start a background job worker in another terminal:
+```bash
+cd backend
+redis-server
+```
+
+### 4. Start the Frontend
+
+Open a new terminal and run:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 5. Access the App
+Go to **http://localhost:5173/register** in your browser to create your first organisation and admin account!
+
+---
+
+## Project Structure
 
 ```text
 AUTOMATED TIMETABLE GENERATOR/
 ├── backend/
 │   ├── app/
-│   │   ├── config/
-│   │   │   ├── settings.py
-│   │   │   └── __init__.py
-│   │   ├── models/
-│   │   │   ├── database.py
-│   │   │   └── __init__.py
-│   │   ├── routes/
-│   │   │   └── __init__.py
-│   │   ├── schemas/
-│   │   │   └── __init__.py
+│   │   ├── models/database.py          # Database schema, connection pool, and queries
 │   │   ├── services/
-│   │   │   ├── timetable_algorithm.py
-│   │   │   └── __init__.py
-│   │   ├── utils/
-│   │   │   └── __init__.py
-│   │   └── __init__.py
-│   ├── static/
-│   │   └── react/
-│   ├── main.py
+│   │   │   ├── timetable_algorithm.py  # Core constraint-solver logic
+│   │   │   └── jobs.py                 # RQ background worker jobs
+│   ├── main.py                         # Flask routes, Auth decorators, API endpoints
 │   ├── requirements.txt
-│   ├── .env
-│   └── README.md
+│   └── .env.example
 ├── frontend/
-│   ├── public/
 │   ├── src/
-│   │   ├── api/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── pages/
-│   │   ├── styles/
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   ├── index.html
+│   │   ├── api/                        # API client wrappers (fetch)
+│   │   ├── components/                 # Reusable UI elements (cards, badges, modals)
+│   │   ├── context/AuthContext.jsx     # JWT state management
+│   │   ├── pages/                      # Dashboard, Timetable, Publish, Settings, etc.
+│   │   └── App.jsx                     # Routing & ProtectedRoute logic
 │   ├── package.json
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── postcss.config.js
+│   └── tailwind.config.js
 └── README.md
 ```
-
-## Features
-
-- Faculty, subjects, divisions, and infrastructure management
-- Constraint-aware timetable generation
-- Conflict analysis and suggestion flow
-- Reports, publication status, and share links
-- REST-style API contracts with a consistent response format
-
-## Scheduling Constraints Enforced
-
-- No faculty overlap in the same day/time slot
-- Faculty availability windows honored
-- Maximum lectures per faculty per day honored
-- Semester and program filtering (Odd/Even, UG/PG)
-
-## Quick Start
-
-### 1. Clone Repository
-
-```bash
-git clone <your-repository-url>
-cd "AUTOMATED TIMETABLE GENERATOR"
-```
-
-### 2. Create and Activate Python Environment
-
-```bash
-python -m venv .venv
-```
-
-Windows PowerShell:
-
-```bash
-.venv\Scripts\Activate.ps1
-```
-
-macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-### 3. Install Backend Dependencies
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-### 4. Install Frontend Dependencies
-
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-### 5. Configure Environment
-
-Create file `backend/.env`:
-
-```env
-DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
-```
-
-### 6. Build Frontend for Backend Serving
-
-```bash
-cd frontend
-npm run build
-cd ..
-```
-
-This outputs assets to `backend/static/react`.
-
-### 7. Run Backend
-
-```bash
-python backend/main.py
-```
-
-Open application at:
-
-- `http://127.0.0.1:5000/`
-
-## API Response Contract
-
-All API responses use:
-
-```json
-{
-  "success": true,
-  "message": "",
-  "data": {}
-}
-```
-
-## Selected API Endpoints
-
-- `GET /api/dashboard`
-- `GET|POST|PUT|DELETE /api/faculty`
-- `GET|POST|PUT|DELETE /api/subjects`
-- `GET|POST|PUT|DELETE /api/divisions`
-- `GET|PUT /api/settings`
-- `GET|PUT /api/profile`
-- `GET|POST /api/infrastructure`
-- `GET /api/reports`
-- `GET /api/conflicts`
-- `POST /api/conflicts/apply-fix`
-- `GET /api/published`
-- `GET /api/timetable`
-- `GET /api/generate/options`
-- `POST /api/generate`
-- `GET /api/search`
-- `GET /api/share/<generation_id>`
-
-## Deployment Notes
-
-- Keep `backend/.env` out of version control.
-- Build frontend before backend deployment (`npm run build`).
-- Serve Flask using a production WSGI server (for example Gunicorn/Waitress) behind reverse proxy and TLS.

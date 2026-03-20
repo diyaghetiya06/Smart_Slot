@@ -6,7 +6,7 @@
 !.env.example
 
 # -----------------------------
-# Python
+# Python / Backend
 # -----------------------------
 .venv/
 venv/
@@ -26,6 +26,11 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
+backend/dump.rdb
+dump.rdb
+
+# RQ Job Queue / Redis
+*.rdb
 
 # -----------------------------
 # Node / Frontend
