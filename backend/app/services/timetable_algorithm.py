@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sys
 from collections import defaultdict
 from datetime import datetime
 import re
+
 
 
 DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
@@ -16,6 +18,13 @@ DEFAULT_TIME_SLOTS = [
     "3:00 PM-4:00 PM",
     "4:00 PM-5:00 PM",
 ]
+
+# Maps subject_type -> room_type preference (used for room assignment).
+SUBJECT_ROOM_TYPE_MAP = {
+    "Lab": "Lab",
+    "Class": "Lecture Hall",
+    "Tutorial": "Lecture Hall",
+}
 
 
 def _is_teaching_slot(slot_label: str) -> bool:
@@ -92,9 +101,7 @@ def _parse_availability(available_time: str) -> list[tuple[int, int]]:
     windows = []
     for block in available_time.split(","):
         block = block.strip()
-        if not block:
-            continue
-        if "-" not in block:
+        if not block or "-" not in block:
             continue
         start, end = [x.strip() for x in block.split("-", 1)]
         start_min = _time_to_minutes(start)
@@ -122,7 +129,35 @@ def _sessions_for_subject(subject_type: str) -> int:
         return 3
     if subject_type == "Tutorial":
         return 2
-    return 2
+    return 2  # Lab
+
+
+def _find_room(
+    subject_type: str,
+    rooms: list[dict],
+    room_busy: set[tuple],
+    day: str,
+    slot: int,
+) -> dict | None:
+    """
+    Find the first available room that:
+    - has status == 'Available'
+    - has room_type matching the subject's preferred type
+    - is not already in use for (day, slot)
+    Returns the room dict or None if nothing suitable found.
+    """
+    preferred_type = SUBJECT_ROOM_TYPE_MAP.get(subject_type, "Lecture Hall")
+    # Try preferred type first, then accept any available room as fallback.
+    for pass_num in range(2):
+        for room in rooms:
+            if room.get("status", "").lower() != "available":
+                continue
+            if pass_num == 0 and room.get("room_type") != preferred_type:
+                continue
+            if (room["id"], day, slot) in room_busy:
+                continue
+            return room
+    return None
 
 
 def generate_timetable(
@@ -133,10 +168,12 @@ def generate_timetable(
     program: str,
     days: list[str] | None = None,
     time_slots: list[str] | None = None,
+    rooms: list[dict] | None = None,  # Task 4 — room list
 ) -> dict:
     active_days = days or DEFAULT_DAYS
     active_time_slots = time_slots or DEFAULT_TIME_SLOTS
     teaching_slots = _get_teaching_slot_indexes(active_time_slots)
+    active_rooms = rooms or []
 
     faculty_map = {f["id"]: f for f in faculty}
     if not faculty_map:
@@ -150,17 +187,22 @@ def generate_timetable(
             "records": [],
         }
 
+    import sys
+    sys.setrecursionlimit(max(10000, len(filtered_subjects) * len(divisions) * 20))
+
     # Full schedule container: division -> day -> slot index -> assignment
-    division_schedule = {
+    division_schedule: dict[int, dict[str, dict[int, dict | None]]] = {
         d["id"]: {day: {slot: None for slot in teaching_slots} for day in active_days}
         for d in divisions
     }
 
-    faculty_busy = set()  # (faculty_id, day, slot_index)
-    faculty_daily_count = defaultdict(int)  # (faculty_id, day) -> count
+    faculty_busy: set[tuple[int, str, int]] = set()   # (faculty_id, day, slot)
+    room_busy: set[tuple[int, str, int]] = set()       # (room_id,    day, slot)  — Task 4
+    faculty_daily_count: dict[tuple[int, str], int] = defaultdict(int)
 
     availability_cache = {
-        f_id: _parse_availability(faculty_map[f_id]["available_time"]) for f_id in faculty_map
+        f_id: _parse_availability(faculty_map[f_id]["available_time"])
+        for f_id in faculty_map
     }
 
     assignments = []
@@ -169,14 +211,10 @@ def generate_timetable(
             sessions = _sessions_for_subject(subject["subject_type"])
             for n in range(sessions):
                 assignments.append(
-                    {
-                        "division": division,
-                        "subject": subject,
-                        "session_idx": n,
-                    }
+                    {"division": division, "subject": subject, "session_idx": n}
                 )
 
-    # Greedy ordering: subjects taught by less-available faculty are placed first.
+    # Greedy ordering: least-available faculty first.
     def assignment_difficulty(item: dict) -> tuple:
         subject = item["subject"]
         f_id = subject["assigned_faculty_id"]
@@ -189,53 +227,71 @@ def generate_timetable(
 
     assignments.sort(key=assignment_difficulty)
 
-    def can_place(division_id: int, day: str, slot: int, subject_row) -> bool:
+    def can_place(division_id: int, day: str, slot: int, subject_row: dict) -> bool:
         faculty_id = subject_row["assigned_faculty_id"]
         faculty_row = faculty_map[faculty_id]
         max_per_day = int(faculty_row["max_lectures_per_day"])
 
         if division_schedule[division_id][day][slot] is not None:
             return False
-
         if (faculty_id, day, slot) in faculty_busy:
             return False
-
-        # No back-to-back lectures for same faculty.
-        if (faculty_id, day, slot - 1) in faculty_busy or (faculty_id, day, slot + 1) in faculty_busy:
-            return False
+        
+        # No back-to-back for same faculty.
+        prev_teaching_idx = teaching_slots.index(slot) - 1
+        next_teaching_idx = teaching_slots.index(slot) + 1
+        
+        if prev_teaching_idx >= 0:
+            prev_slot = teaching_slots[prev_teaching_idx]
+            if (faculty_id, day, prev_slot) in faculty_busy:
+                return False
+        if next_teaching_idx < len(teaching_slots):
+            next_slot = teaching_slots[next_teaching_idx]
+            if (faculty_id, day, next_slot) in faculty_busy:
+                return False
 
         if faculty_daily_count[(faculty_id, day)] >= max_per_day:
             return False
-
-        if not _faculty_is_available_for_slot(
-            availability_cache[faculty_id],
-            slot,
-            active_time_slots,
-        ):
+        if not _faculty_is_available_for_slot(availability_cache[faculty_id], slot, active_time_slots):
             return False
-
+        # Task 4 — check room availability (only if rooms provided).
+        if active_rooms:
+            room = _find_room(subject_row["subject_type"], active_rooms, room_busy, day, slot)
+            if room is None:
+                return False
         return True
 
-    def place(division_id: int, day: str, slot: int, subject_row) -> None:
+    def place(division_id: int, day: str, slot: int, subject_row: dict) -> dict | None:
+        """Place subject and return the assigned room (or None)."""
         faculty_id = subject_row["assigned_faculty_id"]
         division_schedule[division_id][day][slot] = subject_row
         faculty_busy.add((faculty_id, day, slot))
         faculty_daily_count[(faculty_id, day)] += 1
 
-    def unplace(division_id: int, day: str, slot: int, subject_row) -> None:
+        assigned_room: dict | None = None
+        if active_rooms:
+            assigned_room = _find_room(subject_row["subject_type"], active_rooms, room_busy, day, slot)
+            if assigned_room:
+                room_busy.add((assigned_room["id"], day, slot))
+
+        return assigned_room
+
+    def unplace(division_id: int, day: str, slot: int, subject_row: dict) -> None:
         faculty_id = subject_row["assigned_faculty_id"]
         division_schedule[division_id][day][slot] = None
-        faculty_busy.remove((faculty_id, day, slot))
+        faculty_busy.discard((faculty_id, day, slot))
         faculty_daily_count[(faculty_id, day)] -= 1
+        # Remove any room booking for this slot.
+        for room in active_rooms:
+            room_busy.discard((room["id"], day, slot))
 
-    def candidate_positions(division_id: int, subject_row) -> list[tuple[str, int]]:
+    def candidate_positions(division_id: int, subject_row: dict) -> list[tuple[str, int]]:
         candidates = []
         for day in active_days:
             for slot in teaching_slots:
                 if can_place(division_id, day, slot, subject_row):
                     candidates.append((day, slot))
 
-        # Greedy tie-breaker: prioritize less-occupied slots inside each division.
         def occupancy_key(item: tuple[str, int]) -> tuple:
             day, slot = item
             occupied = sum(
@@ -247,6 +303,9 @@ def generate_timetable(
 
         candidates.sort(key=occupancy_key)
         return candidates
+
+    # Track which room was assigned per (division_id, day, slot).
+    room_assignments: dict[tuple[int, str, int], dict | None] = {}
 
     def backtrack(index: int) -> bool:
         if index >= len(assignments):
@@ -262,10 +321,12 @@ def generate_timetable(
             return False
 
         for day, slot in candidates:
-            place(division_id, day, slot, subject)
+            assigned_room = place(division_id, day, slot, subject)
+            room_assignments[(division_id, day, slot)] = assigned_room
             if backtrack(index + 1):
                 return True
             unplace(division_id, day, slot, subject)
+            room_assignments.pop((division_id, day, slot), None)
 
         return False
 
@@ -287,6 +348,7 @@ def generate_timetable(
                 if subject_row is None:
                     continue
                 faculty_row = faculty_map[subject_row["assigned_faculty_id"]]
+                assigned_room = room_assignments.get((division_id, day, slot))
                 records.append(
                     {
                         "division_id": division_id,
@@ -300,7 +362,9 @@ def generate_timetable(
                         "subject_name": subject_row["name"],
                         "faculty_name": faculty_row["name"],
                         "subject_type": subject_row["subject_type"],
-                        "scheduler_version": generation_stamp,
+                        # Room assignment (Task 4)
+                        "room_id": assigned_room["id"] if assigned_room else None,
+                        "room_name": assigned_room["name"] if assigned_room else None,
                     }
                 )
 

@@ -11,3 +11,16 @@ export function createRoom(data) {
     body: JSON.stringify(data),
   });
 }
+
+export function updateRoom(id, data) {
+  return apiRequest(`/infrastructure/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteRoom(id) {
+  return apiRequest(`/infrastructure/${id}`, {
+    method: "DELETE",
+  });
+}

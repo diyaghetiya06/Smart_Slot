@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
 import { Moon, Sun, Menu, Bell } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { fetchConflicts } from "@/api/conflicts";
 
 const routePrefetchers = {
   "/": () => import("@/pages/DashboardPage"),
@@ -41,6 +43,17 @@ const navItems = [
 export default function AppLayout({ children, theme, onToggleTheme }) {
   const location = useLocation();
   const [open, setOpen] = useState(false);
+
+  const { user } = useAuth();
+  const [hasConflicts, setHasConflicts] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchConflicts()
+        .then((res) => setHasConflicts(!!res.data?.has_conflict))
+        .catch(() => {});
+    }
+  }, [user]);
 
   const prefetchRoute = (path) => {
     const prefetch = routePrefetchers[path];
@@ -88,16 +101,24 @@ export default function AppLayout({ children, theme, onToggleTheme }) {
               <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setOpen((v) => !v)}>
                 <Menu className="h-4 w-4" />
               </Button>
-              <h2 className="text-base font-semibold">Smart Timetable</h2>
+              <h2 className="text-base font-semibold">{user?.institute || "Smart Timetable"}</h2>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" aria-label="Notifications">
-                <Bell className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center gap-3">
+              <Link to="/conflicts">
+                <Button variant="outline" size="sm" className="relative group" aria-label="Notifications">
+                  <Bell className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  {hasConflicts && (
+                    <span className="absolute right-1.5 top-1.5 flex h-2 w-2 rounded-full bg-destructive" />
+                  )}
+                </Button>
+              </Link>
               <Button variant="outline" size="sm" onClick={onToggleTheme} aria-label="Toggle Theme">
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                {theme === "dark" ? <Sun className="h-4 w-4 text-yellow-500" /> : <Moon className="h-4 w-4 text-slate-700" />}
               </Button>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary" title={user?.full_name || "User Avatar"}>
+                {user?.full_name?.charAt(0)?.toUpperCase() || "A"}
+              </div>
             </div>
           </header>
           {children}
